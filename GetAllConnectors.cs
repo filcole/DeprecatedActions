@@ -34,8 +34,6 @@ namespace pgc
 
     public static class GetAllConnectors
     {
-        //private readonly string Regex sConnectorUniqueName = new Regex();   // (@"^\.\.\/(.*)\/$");
-        
         private readonly static Regex sConnectorUniqueName = new Regex(@"^\.\.\/(.*)\/$");
 
         private async static Task<List<ActionInfo>> GetConnectorInfo(string connectorReferenceUrl, ILogger log)
