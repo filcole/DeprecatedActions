@@ -37,14 +37,12 @@ namespace pgc
         //private readonly string Regex sConnectorUniqueName = new Regex();   // (@"^\.\.\/(.*)\/$");
         
         private readonly static Regex sConnectorUniqueName = new Regex(@"^\.\.\/(.*)\/$");
-        private readonly static Regex sWhitespace = new Regex(@"\s+");
-        private readonly static Regex sSingleQuote = new Regex(@"\'");
 
-        private static IEnumerable<ActionInfo> GetConnectorInfo(string connectorReferenceUrl)
+        private async static Task<List<ActionInfo>> GetConnectorInfo(string connectorReferenceUrl, ILogger log)
         {
             HtmlWeb web = new HtmlWeb();
 
-            var htmlDoc = web.Load(connectorReferenceUrl);
+            var htmlDoc = await web.LoadFromWebAsync(connectorReferenceUrl);
 
             // Get the list of anchors from the initial table, from this we can get the:
             //   description
@@ -55,33 +53,32 @@ namespace pgc
             // Some connectors don't have any actions
             if (actionNodes == null)
             {
+                log.LogInformation($"No actions found on ${connectorReferenceUrl}");
                 return null;
             }
 
+            // We have to convert to a List (not IEnumerable) because we're going to edit the contents of the list
             var actions = actionNodes.Select(x => new ActionInfo
             {
                 Anchor = x.SelectSingleNode("td/a").GetAttributeValue("href", ""),
                 Name = x.SelectSingleNode("td/a").InnerText,
-                Description = sWhitespace.Replace(x.SelectSingleNode("td/a/../following-sibling::td").InnerText, ""),
-            });
-                
+                Description = x.SelectSingleNode("td/a/../following-sibling::td").InnerText.Trim(),
+            }).ToList();
 
-            // Find the action inforation by searching for the anchor
-            //   extract out the Operation Id
             foreach (var action in actions) {
 
-                //DELETEME var anchorText = sSingleQuote.Replace(action.Anchor.Substring(1), @"\'\'");
-                // Remove the # from the beginning of the anchor
+                #pragma warning disable IDE0057 // Use range operator
                 var anchorText = action.Anchor.Substring(1);
+                #pragma warning restore IDE0057 // Use range operator
 
                 var xpath = "id(\"" + anchorText + "\")/following-sibling::div/dl/dd";
 
-                var operationId = htmlDoc.DocumentNode.SelectSingleNode(xpath)?.InnerText ?? "";
+                var operationId = htmlDoc.DocumentNode.SelectSingleNode(xpath)?.InnerText?.Trim() ?? "";
 
-                action.OperationId = sWhitespace.Replace(operationId, "");
+                action.OperationId = operationId;
 
-                var lowerDescription = action.Name.ToLower();
-                action.IsDeprecated = lowerDescription.Contains("[deprecated]") || lowerDescription.Contains("(deprecated)");
+                var lowerName = action.Name.ToLower();
+                action.IsDeprecated = lowerName.Contains("[deprecated]") || lowerName.Contains("(deprecated)");
             }
             return actions;
         }
@@ -100,7 +97,7 @@ namespace pgc
 
             HtmlWeb web = new HtmlWeb();
 
-            var htmlDoc = web.Load(url);
+            var htmlDoc = await web.LoadFromWebAsync(url);
 
             var connectorNodes= htmlDoc.DocumentNode.SelectNodes("id('list-of-connectors')/following-sibling::table/tr/td/a");
 
@@ -110,41 +107,37 @@ namespace pgc
             //   whether connector is Preview
             //   whether connector is Premium  
             // but don't do that.  We can probably extract from in the docs for each connector
-            var connectorPages = connectorNodes.Select(x => x.Attributes["href"].Value);
+            var relativeUrls = connectorNodes.Select(x => x.Attributes["href"].Value);
 
-            log.LogInformation($"Found {connectorPages.Count()} connectors");
+            log.LogInformation($"Found {relativeUrls.Count()} connectors");
 
             var connectorInfo = new List<ConnectorInfo>();
             var count = 0;
 
-            foreach (var connectorPage in connectorPages)
+            foreach (var relativeUrl in relativeUrls.Take(5))
             {
-                var match = sConnectorUniqueName.Match(connectorPage);
+                var match = sConnectorUniqueName.Match(relativeUrl);
+                if (!match.Success)
+                {
+                    log.LogWarning($"Could not determine uniqueName for relativeUrl {relativeUrl}");
+                    continue;
+                }
                 
+                var uniqueName = match.Groups[1].Value;
 
-                var documentationUrl = $"{url}{connectorPage}";
+                // Note that there's a more direct URL at https://docs.microsoft.com/en-us/connectors/<uniqueName>/
+                // but we'll continue to use the URL scrapped from the main connector reference which redirects
+                var documentationUrl = $"{url}{relativeUrl}";
 
-                log.LogInformation($"{++count}/{connectorPages.Count()}: {documentationUrl}");
+                log.LogInformation($"{++count}/{relativeUrls.Count()}: {documentationUrl}");
 
                 connectorInfo.Add(new ConnectorInfo
                 {
-                    UniqueName = connectorPage,
+                    UniqueName = uniqueName,
                     DocumentationUrl = documentationUrl,
-                    Actions = GetConnectorInfo(documentationUrl),
+                    Actions = await GetConnectorInfo(documentationUrl, log),
                 });
             }
-
-             
-
-            //string name = req.Query["name"];
-
-            //string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            //dynamic data = JsonConvert.DeserializeObject(requestBody);
-            //name = name ?? data?.name;
-
-//            string responseMessage = string.IsNullOrEmpty(name)
-//                ? "This HTTP triggered function executed successfully. Pass a name in the query string or in the request body for a personalized response."
-//                : $"Hello, {name}. This HTTP triggered function executed successfully.";
 
             return new OkObjectResult(JsonConvert.SerializeObject(connectorInfo));
         }
