@@ -114,7 +114,7 @@ namespace pgc
             var connectorInfo = new List<ConnectorInfo>();
             var count = 0;
 
-            foreach (var relativeUrl in relativeUrls.Take(5))
+            foreach (var relativeUrl in relativeUrls)
             {
                 var match = sConnectorUniqueName.Match(relativeUrl);
                 if (!match.Success)
