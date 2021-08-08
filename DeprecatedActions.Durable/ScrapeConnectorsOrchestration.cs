@@ -28,7 +28,7 @@ namespace DeprecatedActions.Durable
 
             // Create a task for each connector to get the actions from their own docs page
             var tasks = new List<Task<ConnectorInfo>>();
-            foreach (var connector in connectors)
+            foreach (var connector in connectors.Take(10))
             {
                 tasks.Add(context.CallActivityAsync<ConnectorInfo>(nameof(ScrapeConnectorsOrchestration_GetConnectorInfo), connector));
             }
@@ -53,7 +53,7 @@ namespace DeprecatedActions.Durable
                 {
                     UniqueName = c.UniqueName,
                     DocumentationUrl = c.DocumentationUrl,
-                    Actions = c.Actions.Where(a => !a.IsDeprecated).ToList(),
+                    Actions = c.Actions.Where(a => a.IsDeprecated == deprecatedOnly).ToList(),
                 })
                 .ToList();
         }
