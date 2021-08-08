@@ -48,7 +48,7 @@ namespace DeprecatedActions.Prog
 
             relativeUrls.Sort();
 
-            foreach (var relativeUrl in relativeUrls.Take(10))
+            foreach (var relativeUrl in relativeUrls)
             {
                 var match = sConnectorUniqueName.Match(relativeUrl);
                 if (!match.Success)
