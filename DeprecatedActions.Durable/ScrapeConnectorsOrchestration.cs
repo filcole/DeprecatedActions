@@ -1,18 +1,17 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using DeprecatedActions.Models;
+using HtmlAgilityPack;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.DurableTask;
 using Microsoft.Azure.WebJobs.Extensions.Http;
-using Microsoft.Azure.WebJobs.Host;
 using Microsoft.Extensions.Logging;
-using DeprecatedActions.Models;
-using HtmlAgilityPack;
-using System.Linq;
-using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 using Octokit;
-using System;
 
 namespace DeprecatedActions.Durable
 {
@@ -112,7 +111,7 @@ namespace DeprecatedActions.Durable
                         .ToList()
                         .ForEach(x => nt.Tree.Add(x));
 
-            // Add items based on blobs 
+            // Add items based on blobs
             nt.Tree.Add(new NewTreeItem { Path = "All.json", Mode = "100644", Type = TreeType.Blob, Sha = allBlobRef.Sha });
             nt.Tree.Add(new NewTreeItem { Path = "Deprecated.json", Mode = "100644", Type = TreeType.Blob, Sha = deprecatedBlobRef.Sha });
             nt.Tree.Add(new NewTreeItem { Path = "NonDeprecated.json", Mode = "100644", Type = TreeType.Blob, Sha = nonDeprecatedBlobRef.Sha });
@@ -179,7 +178,7 @@ namespace DeprecatedActions.Durable
             //   icon
             //   availability in Logic Apps, Power automate and Power Apps
             //   whether connector is Preview
-            //   whether connector is Premium  
+            //   whether connector is Premium
             // but don't do that.  We can probably extract from in the docs for each connector
             var relativeUrls = connectorNodes.Select(x => x.Attributes["href"].Value).ToList();
 
@@ -209,7 +208,6 @@ namespace DeprecatedActions.Durable
                     Actions = new List<ActionInfo>(),
                 };
                 connectorInfo.Add(c);
-
             }
             return connectorInfo;
         }
