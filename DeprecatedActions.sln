@@ -7,6 +7,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DeprecatedActions.Function"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DeprecatedActions.Console", "DeprecatedActions.Console\DeprecatedActions.Console.csproj", "{4AAD0C15-D373-46F1-A77E-C1195CEBBC5B}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DeprecatedActions.Durable", "DeprecatedActions.Durable\DeprecatedActions.Durable.csproj", "{D30657E5-FB31-4475-BB97-0632516F1906}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{4AAD0C15-D373-46F1-A77E-C1195CEBBC5B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4AAD0C15-D373-46F1-A77E-C1195CEBBC5B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4AAD0C15-D373-46F1-A77E-C1195CEBBC5B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D30657E5-FB31-4475-BB97-0632516F1906}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D30657E5-FB31-4475-BB97-0632516F1906}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D30657E5-FB31-4475-BB97-0632516F1906}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D30657E5-FB31-4475-BB97-0632516F1906}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
