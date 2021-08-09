@@ -19,6 +19,30 @@ namespace DeprecatedActions.Durable
     {
         private readonly static Regex sConnectorUniqueName = new Regex(@"^\.\.\/(.*)\/$");
 
+        [FunctionName(nameof(ScrapeConnectorsOrchestration_HttpStart))]
+        public static async Task<HttpResponseMessage> ScrapeConnectorsOrchestration_HttpStart(
+    [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post")] HttpRequestMessage req,
+    [DurableClient] IDurableOrchestrationClient starter,
+    ILogger log)
+        {
+            // Function input comes from the request content.
+            string instanceId = await starter.StartNewAsync("ScrapeConnectorsOrchestration", null);
+
+            log.LogInformation($"Started orchestration with ID = '{instanceId}'.");
+
+            return starter.CreateCheckStatusResponse(req, instanceId);
+        }
+
+        [FunctionName(nameof(ScrapeConnectorsOrchestration_ScheduledRun))]
+        public static async Task ScrapeConnectorsOrchestration_ScheduledRun(
+            [TimerTrigger("0 0 6/12 * * *")] TimerInfo timerInfo,    // Trigger daily at 06:00 and 18:00
+            [DurableClient] IDurableOrchestrationClient starter,
+            ILogger log)
+        {
+            string instanceId = await starter.StartNewAsync("ScrapeConnectorsOrchestration", null);
+            log.LogInformation($"Started orchestration with ID = '{instanceId}'.");
+        }
+
         [FunctionName("ScrapeConnectorsOrchestration")]
         public static async Task<List<ConnectorInfo>> RunOrchestrator(
             [OrchestrationTrigger] IDurableOrchestrationContext context, ILogger log)
@@ -56,109 +80,6 @@ namespace DeprecatedActions.Durable
                     Actions = c.Actions.Where(a => a.IsDeprecated == deprecatedOnly).ToList(),
                 })
                 .ToList();
-        }
-
-        [FunctionName(nameof(ScrapeConnectorsOrchestration_UpdateGithub))]
-        public async static Task<bool> ScrapeConnectorsOrchestration_UpdateGithub([ActivityTrigger] List<ConnectorInfo> connectors, ILogger log)
-        {
-            // Source: https://laedit.net/2016/11/12/GitHub-commit-with-Octokit-net.html
-            var gitHub = new GitHubClient(new ProductHeaderValue("MyCoolApp"));
-            gitHub.Credentials = new Credentials("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");
-            var owner = "filcole";
-            var repo = "PowerAutomateConnectors";
-
-            // *** Get the SHA fo the latest commit of the main branch
-            var headMainRef = "heads/main";
-            // Get reference of main branch
-            var mainReference = await gitHub.Git.Reference.Get(owner, repo, headMainRef);
-            // Get the latest commit of this branch
-            var latestCommit = await gitHub.Git.Commit.Get(owner, repo, mainReference.Object.Sha);
-            var currentTree = await gitHub.Git.Tree.GetRecursive(owner, repo, latestCommit.Tree.Sha);
-
-            // *** Create the new blobs for files
-            var allBlob = new NewBlob { Encoding = EncodingType.Utf8, Content = JsonConvert.SerializeObject(connectors, Formatting.Indented) };
-            var allBlobRef = await gitHub.Git.Blob.Create(owner, repo, allBlob);
-
-            var deprecatedConnectors = FilteredConnectors(connectors, true);
-            var deprecatedBlob = new NewBlob { Encoding = EncodingType.Utf8, Content = JsonConvert.SerializeObject(deprecatedConnectors, Formatting.Indented) };
-            var deprecatedBlobRef = await gitHub.Git.Blob.Create(owner, repo, deprecatedBlob);
-
-            var nonDeprecatedConnectors = FilteredConnectors(connectors, false);
-            var nonDeprecatedBlob = new NewBlob { Encoding = EncodingType.Utf8, Content = JsonConvert.SerializeObject(nonDeprecatedConnectors, Formatting.Indented) };
-            var nonDeprecatedBlobRef = await gitHub.Git.Blob.Create(owner, repo, nonDeprecatedBlob);
-
-            // ** Create a new tree with
-            //      * the SHA of the tree of the latest commit as base
-            //      * items based on the blob(s)
-
-            // Create a new Tree
-
-            // Don't copy from the current tree
-            // https://github.com/octokit/octokit.net/issues/1610#issuecomment-305767094
-            //  i.e. var nt = new NewTree { BaseTree = latestCommit.Tree.Sha };
-
-            // Create a new tree from the current tree
-            var nt = new NewTree();
-            currentTree.Tree
-                        .Where(x => x.Type != TreeType.Tree)
-                        .Select(x => new NewTreeItem
-                        {
-                            Path = x.Path,
-                            Mode = x.Mode,
-                            Type = x.Type.Value,
-                            Sha = x.Sha
-                        })
-                        .ToList()
-                        .ForEach(x => nt.Tree.Add(x));
-
-            // Add items based on blobs
-            nt.Tree.Add(new NewTreeItem { Path = "All.json", Mode = "100644", Type = TreeType.Blob, Sha = allBlobRef.Sha });
-            nt.Tree.Add(new NewTreeItem { Path = "Deprecated.json", Mode = "100644", Type = TreeType.Blob, Sha = deprecatedBlobRef.Sha });
-            nt.Tree.Add(new NewTreeItem { Path = "NonDeprecated.json", Mode = "100644", Type = TreeType.Blob, Sha = nonDeprecatedBlobRef.Sha });
-
-            var existingConnectorFiles = nt.Tree.Where(x => x.Path.StartsWith("connectors"));
-            foreach (var toRemove in existingConnectorFiles.ToList())
-            {
-                nt.Tree.Remove(toRemove);
-            }
-
-            foreach (var connector in connectors)
-            {
-                log.LogInformation($"Creating blob for connector {connector.UniqueName}");
-                var connectorBlob = new NewBlob { Encoding = EncodingType.Utf8, Content = JsonConvert.SerializeObject(connector, Formatting.Indented) };
-                var connectorBlobRef = await gitHub.Git.Blob.Create(owner, repo, connectorBlob);
-
-                nt.Tree.Add(new NewTreeItem
-                {
-                    Path = $"connectors/{connector.UniqueName}.json",
-                    Mode = "100644",
-                    Type = TreeType.Blob,
-                    Sha = connectorBlobRef.Sha,
-                });
-            }
-
-            //// Remove a file
-            //var toRemove = nt.Tree.Where(x => x.Path.Equals("all.json")).FirstOrDefault();
-            //if (toRemove != null)
-            //{
-            //    nt.Tree.Remove(toRemove);
-            //}
-
-            var newTree = await gitHub.Git.Tree.Create(owner, repo, nt);
-
-            // ** Create the commit with the SHAs of the tree and the refernece of main branch
-
-            // Create Commit
-            var newCommit = new NewCommit($"Update as at {DateTime.UtcNow.ToString("O")}", newTree.Sha, mainReference.Object.Sha);
-            var commit = await gitHub.Git.Commit.Create(owner, repo, newCommit);
-
-            // ** Updte the reference of main branch with the SHA of the commit
-            await gitHub.Git.Reference.Update(owner, repo, headMainRef, new ReferenceUpdate(commit.Sha));
-
-            // FIXME: Put the above in a try/catch
-
-            // No errors
-            return true;
         }
 
         [FunctionName(nameof(ScrapeConnectorsOrchestration_ScrapeConnectors))]
@@ -262,28 +183,107 @@ namespace DeprecatedActions.Durable
             return connector;
         }
 
-        [FunctionName(nameof(ScrapeConnectorsOrchestration_HttpStart))]
-        public static async Task<HttpResponseMessage> ScrapeConnectorsOrchestration_HttpStart(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post")] HttpRequestMessage req,
-            [DurableClient] IDurableOrchestrationClient starter,
-            ILogger log)
+        [FunctionName(nameof(ScrapeConnectorsOrchestration_UpdateGithub))]
+        public async static Task<bool> ScrapeConnectorsOrchestration_UpdateGithub([ActivityTrigger] List<ConnectorInfo> connectors, ILogger log)
         {
-            // Function input comes from the request content.
-            string instanceId = await starter.StartNewAsync("ScrapeConnectorsOrchestration", null);
+            // Source: https://laedit.net/2016/11/12/GitHub-commit-with-Octokit-net.html
+            var gitHub = new GitHubClient(new ProductHeaderValue("MyCoolApp"));
+            gitHub.Credentials = new Credentials("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");
+            var owner = "filcole";
+            var repo = "PowerAutomateConnectors";
 
-            log.LogInformation($"Started orchestration with ID = '{instanceId}'.");
+            // *** Get the SHA fo the latest commit of the main branch
+            var headMainRef = "heads/main";
+            // Get reference of main branch
+            var mainReference = await gitHub.Git.Reference.Get(owner, repo, headMainRef);
+            // Get the latest commit of this branch
+            var latestCommit = await gitHub.Git.Commit.Get(owner, repo, mainReference.Object.Sha);
+            var currentTree = await gitHub.Git.Tree.GetRecursive(owner, repo, latestCommit.Tree.Sha);
 
-            return starter.CreateCheckStatusResponse(req, instanceId);
-        }
+            // *** Create the new blobs for files
+            var allBlob = new NewBlob { Encoding = EncodingType.Utf8, Content = JsonConvert.SerializeObject(connectors, Formatting.Indented) };
+            var allBlobRef = await gitHub.Git.Blob.Create(owner, repo, allBlob);
 
-        [FunctionName(nameof(ScrapeConnectorsOrchestration_ScheduledRun))]
-        public static async Task ScrapeConnectorsOrchestration_ScheduledRun(
-            [TimerTrigger("0 0 6/12 * * *")] TimerInfo timerInfo,    // Trigger daily at 06:00 and 18:00
-            [DurableClient] IDurableOrchestrationClient starter,
-            ILogger log)
-        {
-            string instanceId = await starter.StartNewAsync("ScrapeConnectorsOrchestration", null);
-            log.LogInformation($"Started orchestration with ID = '{instanceId}'.");
+            var deprecatedConnectors = FilteredConnectors(connectors, true);
+            var deprecatedBlob = new NewBlob { Encoding = EncodingType.Utf8, Content = JsonConvert.SerializeObject(deprecatedConnectors, Formatting.Indented) };
+            var deprecatedBlobRef = await gitHub.Git.Blob.Create(owner, repo, deprecatedBlob);
+
+            var nonDeprecatedConnectors = FilteredConnectors(connectors, false);
+            var nonDeprecatedBlob = new NewBlob { Encoding = EncodingType.Utf8, Content = JsonConvert.SerializeObject(nonDeprecatedConnectors, Formatting.Indented) };
+            var nonDeprecatedBlobRef = await gitHub.Git.Blob.Create(owner, repo, nonDeprecatedBlob);
+
+            // ** Create a new tree with
+            //      * the SHA of the tree of the latest commit as base
+            //      * items based on the blob(s)
+
+            // Create a new Tree
+
+            // Don't copy from the current tree
+            // https://github.com/octokit/octokit.net/issues/1610#issuecomment-305767094
+            //  i.e. var nt = new NewTree { BaseTree = latestCommit.Tree.Sha };
+
+            // Create a new tree from the current tree
+            var nt = new NewTree();
+            currentTree.Tree
+                        .Where(x => x.Type != TreeType.Tree)
+                        .Select(x => new NewTreeItem
+                        {
+                            Path = x.Path,
+                            Mode = x.Mode,
+                            Type = x.Type.Value,
+                            Sha = x.Sha
+                        })
+                        .ToList()
+                        .ForEach(x => nt.Tree.Add(x));
+
+            // Add items based on blobs
+            nt.Tree.Add(new NewTreeItem { Path = "All.json", Mode = "100644", Type = TreeType.Blob, Sha = allBlobRef.Sha });
+            nt.Tree.Add(new NewTreeItem { Path = "Deprecated.json", Mode = "100644", Type = TreeType.Blob, Sha = deprecatedBlobRef.Sha });
+            nt.Tree.Add(new NewTreeItem { Path = "NonDeprecated.json", Mode = "100644", Type = TreeType.Blob, Sha = nonDeprecatedBlobRef.Sha });
+
+            var existingConnectorFiles = nt.Tree.Where(x => x.Path.StartsWith("connectors"));
+            foreach (var toRemove in existingConnectorFiles.ToList())
+            {
+                nt.Tree.Remove(toRemove);
+            }
+
+            foreach (var connector in connectors)
+            {
+                log.LogInformation($"Creating blob for connector {connector.UniqueName}");
+                var connectorBlob = new NewBlob { Encoding = EncodingType.Utf8, Content = JsonConvert.SerializeObject(connector, Formatting.Indented) };
+                var connectorBlobRef = await gitHub.Git.Blob.Create(owner, repo, connectorBlob);
+
+                nt.Tree.Add(new NewTreeItem
+                {
+                    Path = $"connectors/{connector.UniqueName}.json",
+                    Mode = "100644",
+                    Type = TreeType.Blob,
+                    Sha = connectorBlobRef.Sha,
+                });
+            }
+
+            //// Remove a file
+            //var toRemove = nt.Tree.Where(x => x.Path.Equals("all.json")).FirstOrDefault();
+            //if (toRemove != null)
+            //{
+            //    nt.Tree.Remove(toRemove);
+            //}
+
+            var newTree = await gitHub.Git.Tree.Create(owner, repo, nt);
+
+            // ** Create the commit with the SHAs of the tree and the refernece of main branch
+
+            // Create Commit
+            var newCommit = new NewCommit($"Update as at {DateTime.UtcNow.ToString("O")}", newTree.Sha, mainReference.Object.Sha);
+            var commit = await gitHub.Git.Commit.Create(owner, repo, newCommit);
+
+            // ** Updte the reference of main branch with the SHA of the commit
+            await gitHub.Git.Reference.Update(owner, repo, headMainRef, new ReferenceUpdate(commit.Sha));
+
+            // FIXME: Put the above in a try/catch
+
+            // No errors
+            return true;
         }
     }
 }
