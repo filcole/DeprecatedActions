@@ -28,7 +28,7 @@ namespace DeprecatedActions.Durable
 
             // Create a task for each connector to get the actions from their own docs page
             var tasks = new List<Task<ConnectorInfo>>();
-            foreach (var connector in connectors.Take(10))
+            foreach (var connector in connectors)
             {
                 tasks.Add(context.CallActivityAsync<ConnectorInfo>(nameof(ScrapeConnectorsOrchestration_GetConnectorInfo), connector));
             }
@@ -274,6 +274,16 @@ namespace DeprecatedActions.Durable
             log.LogInformation($"Started orchestration with ID = '{instanceId}'.");
 
             return starter.CreateCheckStatusResponse(req, instanceId);
+        }
+
+        [FunctionName(nameof(ScrapeConnectorsOrchestration_ScheduledRun))]
+        public static async Task ScrapeConnectorsOrchestration_ScheduledRun(
+            [TimerTrigger("0 0 6/12 * * *")] TimerInfo timerInfo,    // Trigger daily at 06:00 and 18:00
+            [DurableClient] IDurableOrchestrationClient starter,
+            ILogger log)
+        {
+            string instanceId = await starter.StartNewAsync("ScrapeConnectorsOrchestration", null);
+            log.LogInformation($"Started orchestration with ID = '{instanceId}'.");
         }
     }
 }
