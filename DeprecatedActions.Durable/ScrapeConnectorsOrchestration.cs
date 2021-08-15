@@ -188,9 +188,16 @@ namespace DeprecatedActions.Durable
         {
             // Source: https://laedit.net/2016/11/12/GitHub-commit-with-Octokit-net.html
             var gitHub = new GitHubClient(new ProductHeaderValue("MyCoolApp"));
-            gitHub.Credentials = new Credentials("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");
-            var owner = "filcole";
-            var repo = "PowerAutomateConnectors";
+
+            var repo = Environment.GetEnvironmentVariable("GitHubRepo");
+            var owner = Environment.GetEnvironmentVariable("GitHubOwner");
+            var personalAccessToken = Environment.GetEnvironmentVariable("GitHubPAT");
+
+            gitHub.Credentials = new Credentials(personalAccessToken);
+
+            //var repo = "PowerAutomateConnectors";
+            //var owner = "filcole";
+            //gitHub.Credentials = new Credentials("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");
 
             // *** Get the SHA fo the latest commit of the main branch
             var headMainRef = "heads/main";
