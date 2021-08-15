@@ -147,7 +147,7 @@ namespace DeprecatedActions.Durable
             //   if the action is deprecated
             // But we can't get the OperationId of the action
             var actionNodes = htmlDoc.DocumentNode.SelectNodes("id('actions')/following-sibling::table/tr");
-            log.LogInformation($"Found {actionNodes?.Count() ?? 0} actions on connector ${connector.UniqueName}");
+            log.LogInformation($"Found {actionNodes?.Count() ?? 0} actions on connector {connector.UniqueName}");
 
             // Some connectors don't have any actions - abort early.
             if (actionNodes == null)
