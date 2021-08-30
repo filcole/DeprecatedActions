@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -9,7 +10,10 @@ using HtmlAgilityPack;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.DurableTask;
 using Microsoft.Azure.WebJobs.Extensions.Http;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Enums;
 using Microsoft.Extensions.Logging;
+using Microsoft.OpenApi.Models;
 
 namespace DeprecatedActions.Durable
 {
@@ -17,6 +21,12 @@ namespace DeprecatedActions.Durable
     {
         private readonly static Regex sConnectorUniqueName = new Regex(@"^\.\.\/(.*)\/$");
 
+        // Add these four attribute classes below
+        [OpenApiOperation(operationId: "ScrapeConnectors", tags: new[] { "default" }, Summary = "Gets the actions the passed connectors", Description = "Gets the actions and their deprecation status for one or more custom connectors", Visibility = OpenApiVisibilityType.Important)]
+        [OpenApiSecurity("function_key", SecuritySchemeType.ApiKey, Name = "code", In = OpenApiSecurityLocationType.Query)]
+        [OpenApiRequestBody(contentType: "application/json", typeof(ScrapeConnectorsRequest), Required = true)]
+        [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "text/plain", bodyType: typeof(List<ConnectorInfo>), Summary = "The connector information", Description = "The connector information and actions/operations within")]
+        // Add these four attribute classes above
         [FunctionName(nameof(ScrapeConnectorsHttpTrigger))]
         public static async Task<HttpResponseMessage> ScrapeConnectorsHttpTrigger(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = null)] HttpRequestMessage req,
