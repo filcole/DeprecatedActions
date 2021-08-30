@@ -3,10 +3,6 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.31205.134
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DeprecatedActions.Function", "DeprecatedActions.Function.csproj", "{B5061006-D05D-4636-9762-BE10085EAD43}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DeprecatedActions.Console", "DeprecatedActions.Console\DeprecatedActions.Console.csproj", "{4AAD0C15-D373-46F1-A77E-C1195CEBBC5B}"
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DeprecatedActions.Durable", "DeprecatedActions.Durable\DeprecatedActions.Durable.csproj", "{D30657E5-FB31-4475-BB97-0632516F1906}"
 EndProject
 Global
@@ -15,14 +11,6 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{B5061006-D05D-4636-9762-BE10085EAD43}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{B5061006-D05D-4636-9762-BE10085EAD43}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{B5061006-D05D-4636-9762-BE10085EAD43}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{B5061006-D05D-4636-9762-BE10085EAD43}.Release|Any CPU.Build.0 = Release|Any CPU
-		{4AAD0C15-D373-46F1-A77E-C1195CEBBC5B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{4AAD0C15-D373-46F1-A77E-C1195CEBBC5B}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{4AAD0C15-D373-46F1-A77E-C1195CEBBC5B}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{4AAD0C15-D373-46F1-A77E-C1195CEBBC5B}.Release|Any CPU.Build.0 = Release|Any CPU
 		{D30657E5-FB31-4475-BB97-0632516F1906}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{D30657E5-FB31-4475-BB97-0632516F1906}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D30657E5-FB31-4475-BB97-0632516F1906}.Release|Any CPU.ActiveCfg = Release|Any CPU

@@ -5,6 +5,10 @@ using System.Text;
 
 namespace DeprecatedActions.Models
 {
+    public class ScrapeConnectorsRequest
+    {
+        public String[] SelectedConnectors { get; set; }
+    }
 
     public class ConnectorInfo
     {
