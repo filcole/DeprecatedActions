@@ -1,12 +1,16 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using DeprecatedActions.Models;
 using HtmlAgilityPack;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.DurableTask;
 using Microsoft.Azure.WebJobs.Extensions.Http;
@@ -14,36 +18,134 @@ using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
 using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Enums;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
+using Newtonsoft.Json;
 
 namespace DeprecatedActions.Durable
 {
-    public static class ScrapeConnectors
+    public static class ConnectorScrapeage
     {
         private readonly static Regex sConnectorUniqueName = new Regex(@"^\.\.\/(.*)\/$");
 
-        // Add these four attribute classes below
-        [OpenApiOperation(operationId: "ScrapeConnectors", tags: new[] { "default" }, Summary = "Gets the actions the passed connectors", Description = "Gets the actions and their deprecation status for one or more custom connectors", Visibility = OpenApiVisibilityType.Important)]
-        [OpenApiSecurity("function_key", SecuritySchemeType.ApiKey, Name = "code", In = OpenApiSecurityLocationType.Query)]
+        [OpenApiOperation(operationId: nameof(ScrapeConnectors), tags: new[] { "default" }, Summary = "Get Actions", Description = "Gets the actions and their deprecation status for one or more custom connectors", Visibility = OpenApiVisibilityType.Important)]
+        [OpenApiSecurity("function_key", SecuritySchemeType.ApiKey, Name = "x-functions-key", In = OpenApiSecurityLocationType.Header)]
         [OpenApiRequestBody(contentType: "application/json", typeof(ScrapeConnectorsRequest), Required = true)]
-        [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "text/plain", bodyType: typeof(List<ConnectorInfo>), Summary = "The connector information", Description = "The connector information and actions/operations within")]
-        // Add these four attribute classes above
-        [FunctionName(nameof(ScrapeConnectorsHttpTrigger))]
-        public static async Task<HttpResponseMessage> ScrapeConnectorsHttpTrigger(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = null)] HttpRequestMessage req,
+        [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "text/plain", bodyType: typeof(List<ConnectorInfo>), Summary = "Connector information", Description = "The actions/operations within a connector and the status thereof")]
+        [FunctionName(nameof(ScrapeConnectors))]
+        public static async Task<IActionResult> ScrapeConnectors(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = null)] HttpRequest req,
             [DurableClient] IDurableOrchestrationClient starter,
             ILogger log)
         {
-            var request = await req.Content.ReadAsAsync<ScrapeConnectorsRequest>();
+            string requestBody = new StreamReader(req.Body).ReadToEnd();
+            var request = JsonConvert.DeserializeObject<ScrapeConnectorsRequest>(requestBody);
 
-            log.LogInformation($"{nameof(ScrapeConnectorsHttpTrigger)} triggered at {DateTime.UtcNow:O}. " +
+            log.LogInformation($"{nameof(ScrapeConnectors)} triggered at {DateTime.UtcNow:O}. " +
                 $"SelectedConnectors=${String.Join(",", request.SelectedConnectors)}");
+            log.LogInformation($"req.Scheme={req.Scheme}");
 
             // Start the orchestrator with this request
             string instanceId = await starter.StartNewAsync("ScrapeConnectorsOrchestration", request);
 
             log.LogInformation($"Started orchestration with ID = '{instanceId}'.");
 
-            return starter.CreateCheckStatusResponse(req, instanceId);
+            //return starter.CreateCheckStatusResponse(req, instanceId);
+
+            // Ref: 
+            //  https://docs.microsoft.com/en-us/azure/architecture/patterns/async-request-reply#asyncprocessingworkacceptor-function
+            //  https://pacodelacruzag.wordpress.com/2018/07/10/async-http-apis-with-azure-durable-functions-2/
+            //  https://kendaleiv.com/avoid-exposing-status-uri-from-durable-functions-extension-for-azure-functions-to-untrusted-parties-it-contains-a-secret-key/
+
+            var checkStatusLocation = GetCheckStatusLocation(req, instanceId);
+            //string checkStatusLocacion = string.Format("{0}://{1}/api/ScrapeConnectorsStatus/{2}", req.Scheme, req.Host, instanceId); // To inform the client where to check the status
+            //string checkStatusLocacion = string.Format("{0}://{1}/api/ScrapeConnectorsStatus/{2}", req.Scheme, host, instanceId); // To inform the client where to check the status
+//            string message = $@"{{
+//  ""id"": ""{ instanceId }"",
+//  ""statusQueryGetUri"": ""{ checkStatusLocation }""
+//}}";
+
+            // Create an Http Response with Status Accepted (202) to let the client know that the request has been accepted but not yet processed. 
+            //ActionResult response = new AcceptedResult(checkStatusLocation, message); // The GET status location is returned as an http header
+
+            ActionResult response = new AcceptedResult(checkStatusLocation, new { 
+                id = instanceId,
+                statusQueryGetUri = checkStatusLocation,
+            //    sendEventPostUri = checkStatusLocation + "AA",
+            //    terminatePostUri = checkStatusLocation + "BB",
+            //    purgeHistoryDeleteUri = checkStatusLocation + "CC",
+            }); // The GET status location is returned as an http header
+
+            req.HttpContext.Response.Headers.Add("retry-after", "20"); // To inform the client how long to wait in seconds before checking the status
+            ////req.HttpContext.Response.Headers.Add("Content-Type", "application/json");
+
+            return response;
+
+
+        }
+
+        private static string GetCheckStatusLocation(HttpRequest req, string instanceId)
+        {
+            //var checkStatusLocation = string.Format("{0}://{1}/api/ScrapeConnectorsStatus/{2}", req.Scheme, req.Host, instanceId);
+            //var checkStatusLocation = string.Format("{0}://{1}/api/ScrapeConnectorsStatus/{2}", "https", host, instanceId);
+
+            var checkStatusLocation = string.Format("{0}://{1}/api/ScrapeConnectorsStatus/instance/{2}", req.Scheme, req.Host, instanceId);
+
+            //var checkStatusLocation = $"https://funcdeprecatedactionsblog.azurewebsites.net/api/ScrapeConnectorsStatus?instance={instanceId}";
+            return checkStatusLocation;
+        }
+
+        /// <summary>
+        /// Http Triggered Function which acts as a wrapper to get the status of a running Durable orchestration instance.
+        /// It enriches the response based on the GetStatusAsync's retruned value
+        /// I'm using Anonymous Authorisation Level for demonstration purposes. You should use a more secure approach. 
+        /// </summary>
+        /// <param name="req"></param>
+        /// <param name="orchestrationClient"></param>
+        /// <param name="instanceId"></param>
+        /// <param name="logger"></param>
+        /// <returns></returns>
+        [FunctionName("GetStatus")]
+        public static async Task<IActionResult> Run(
+            [HttpTrigger(AuthorizationLevel.Anonymous, methods: "get", Route = "ScrapeConnectorsStatus/instance/{instanceId}")] HttpRequest req,
+            [DurableClient] IDurableOrchestrationClient orchestrationClient,
+            string instanceId,
+            ILogger logger)
+        {
+            // Get the built-in status of the orchestration instance. This status is managed by the Durable Functions Extension. 
+            var status = await orchestrationClient.GetStatusAsync(instanceId);
+            if (status != null)
+            {
+                // Get the custom status of the orchestration intance. This status is set by our code. 
+                // This can be any serialisable object. In this case, just a string. 
+                string customStatus = (string)status.CustomStatus;
+                if (status.RuntimeStatus == OrchestrationRuntimeStatus.Running || status.RuntimeStatus == OrchestrationRuntimeStatus.Pending)
+                {
+                    //The URL (location header) is prepared so the client know where to get the status later. 
+                    //string checkStatusLocation = string.Format("{0}://{1}/api/ScrapeConnectorsStatus/{2}", req.Scheme, req.Host, instanceId);
+                    string checkStatusLocation = GetCheckStatusLocation(req, instanceId);
+                    string message = $"Your submission is being processed. The current status is {customStatus}. To check the status later, go to: GET {checkStatusLocation}"; // To inform the client where to check the status
+
+                    // Create an Http Response with Status Accepted (202) to let the client know that the original request hasn't yet been fully processed. 
+                    //ActionResult response = new AcceptedResult(checkStatusLocation, message); // The GET status location is returned as an http header
+
+                    ActionResult response = new AcceptedResult(checkStatusLocation, new
+                    {
+                        id = instanceId,
+                        statusQueryGetUri = checkStatusLocation,
+                        sendEventPostUri = checkStatusLocation + "AA",
+                        terminatePostUri = checkStatusLocation + "BB",
+                        purgeHistoryDeleteUri = checkStatusLocation + "CC",
+                    }); // The GET status location is returned as an http header
+
+                    req.HttpContext.Response.Headers.Add("retry-after", "20"); // To inform the client how long to wait before checking the status. 
+                    return response;
+                }
+                else if (status.RuntimeStatus == OrchestrationRuntimeStatus.Completed)
+                {
+                    return new OkObjectResult(status.Output);
+                }
+            }
+            // If status is null, then instance has not been found. Create and return an Http Response with status NotFound (404). 
+            return new NotFoundObjectResult($"Whoops! Something went wrong. Please check if your submission Id is correct. Submission '{instanceId}' not found.");
         }
 
         [FunctionName("ScrapeConnectorsOrchestration")]
@@ -74,6 +176,10 @@ namespace DeprecatedActions.Durable
 
             // Put the results together
             var result = tasks.Select(t => t.Result);
+
+            // Add delay of 2 mins to aid debugging
+            //DateTime deadline = context.CurrentUtcDateTime.Add(TimeSpan.FromMinutes(1));
+            //await context.CreateTimer(deadline, CancellationToken.None);
 
             return result.OrderBy(r => r.UniqueName).ToList();
         }

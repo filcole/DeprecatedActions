@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "DeprecatedActions.Durable": {
+      "commandName": "Project",
+      "commandLineArgs": "start --verbose"
+    }
+  }
+}
