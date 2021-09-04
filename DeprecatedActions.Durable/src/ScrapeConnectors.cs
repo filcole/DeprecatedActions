@@ -59,11 +59,7 @@ namespace DeprecatedActions.Durable
 
             ActionResult response = new AcceptedResult(checkStatusLocation, new
             {
-                id = instanceId,
-                statusQueryGetUri = checkStatusLocation,  // The GET status location is returned as an http header, this is just for info
-                sendEventPostUri = checkStatusLocation + "AA",
-                terminatePostUri = checkStatusLocation + "BB",
-                purgeHistoryDeleteUri = checkStatusLocation + "CC",
+                id = instanceId
             }); 
 
             // To inform the client how long to wait in seconds before checking the status
@@ -109,18 +105,11 @@ namespace DeprecatedActions.Durable
                     //The URL (location header) is prepared so the client know where to get the status later. 
                     //string checkStatusLocation = string.Format("{0}://{1}/api/ScrapeConnectorsStatus/{2}", req.Scheme, req.Host, instanceId);
                     string checkStatusLocation = GetCheckStatusLocation(req, instanceId);
-                    string message = $"Your submission is being processed. The current status is {customStatus}. To check the status later, go to: GET {checkStatusLocation}"; // To inform the client where to check the status
 
-                    // Create an Http Response with Status Accepted (202) to let the client know that the original request hasn't yet been fully processed. 
-                    //ActionResult response = new AcceptedResult(checkStatusLocation, message); // The GET status location is returned as an http header
-
+                    // Create an Http Response with Status Accepted (202) to let the client know that the original request might not be acted up on yet
                     ActionResult response = new AcceptedResult(checkStatusLocation, new
                     {
-                        id = instanceId,
-                        statusQueryGetUri = checkStatusLocation,    // The GET status location is returned as an http header
-                        sendEventPostUri = checkStatusLocation + "AA",
-                        terminatePostUri = checkStatusLocation + "BB",
-                        purgeHistoryDeleteUri = checkStatusLocation + "CC",
+                        id = instanceId
                     }); 
 
                     // To inform the client how long to wait before checking the status. 
