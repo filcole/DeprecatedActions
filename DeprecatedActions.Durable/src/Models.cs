@@ -26,4 +26,3 @@ namespace DeprecatedActions.Models
         public bool IsDeprecated { get; set; }
     }
 }
-
