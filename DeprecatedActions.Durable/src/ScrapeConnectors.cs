@@ -78,8 +78,6 @@ namespace DeprecatedActions.Durable
             ////req.HttpContext.Response.Headers.Add("Content-Type", "application/json");
 
             return response;
-
-
         }
 
         private static string GetCheckStatusLocation(HttpRequest req, string instanceId)
@@ -103,8 +101,11 @@ namespace DeprecatedActions.Durable
         /// <param name="instanceId"></param>
         /// <param name="logger"></param>
         /// <returns></returns>
-        [FunctionName("GetStatus")]
-        public static async Task<IActionResult> Run(
+        [OpenApiOperation(operationId: nameof(ScrapeConnectorsStatus), tags: new[] { "default" }, Summary = "Get Status of Durable Function", Description = "Gets the status of a durable function", Visibility = OpenApiVisibilityType.Internal)]
+        [OpenApiParameter(name: "instanceId", In = ParameterLocation.Path, Required = true, Type = typeof(string))]
+        [OpenApiResponseWithoutBody(statusCode: HttpStatusCode.OK, Description = "default")]
+        [FunctionName(nameof(ScrapeConnectorsStatus))]
+        public static async Task<IActionResult> ScrapeConnectorsStatus (
             [HttpTrigger(AuthorizationLevel.Anonymous, methods: "get", Route = "ScrapeConnectorsStatus/instance/{instanceId}")] HttpRequest req,
             [DurableClient] IDurableOrchestrationClient orchestrationClient,
             string instanceId,
@@ -143,7 +144,12 @@ namespace DeprecatedActions.Durable
                 {
                     return new OkObjectResult(status.Output);
                 }
+                else if (status.RuntimeStatus == OrchestrationRuntimeStatus.Failed)
+                {
+                    return new BadRequestObjectResult(status.Output);
+                }
             }
+
             // If status is null, then instance has not been found. Create and return an Http Response with status NotFound (404). 
             return new NotFoundObjectResult($"Whoops! Something went wrong. Please check if your submission Id is correct. Submission '{instanceId}' not found.");
         }
@@ -162,6 +168,11 @@ namespace DeprecatedActions.Durable
             {
                 // Filter connectors found to just the selectedConnectors required
                 connectors = connectors.Where(c => request.SelectedConnectors.Contains(c.UniqueName)).ToList();
+
+                if (connectors.Count < request.SelectedConnectors.Count())
+                {
+                    throw new Exception("Not all connectors found");
+                }
             }
 
             // Create a task for each connector to get the actions from their own docs page
