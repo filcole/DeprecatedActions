@@ -40,55 +40,41 @@ namespace DeprecatedActions.Durable
             var request = JsonConvert.DeserializeObject<ScrapeConnectorsRequest>(requestBody);
 
             log.LogInformation($"{nameof(ScrapeConnectors)} triggered at {DateTime.UtcNow:O}. " +
-                $"SelectedConnectors=${String.Join(",", request.SelectedConnectors)}");
-            log.LogInformation($"req.Scheme={req.Scheme}");
+                               $"SelectedConnectors=${String.Join(",", request.SelectedConnectors)}");
 
             // Start the orchestrator with this request
             string instanceId = await starter.StartNewAsync("ScrapeConnectorsOrchestration", request);
 
             log.LogInformation($"Started orchestration with ID = '{instanceId}'.");
 
-            //return starter.CreateCheckStatusResponse(req, instanceId);
+            // We will NOT use the 'standard' check status response here, because Power Automate requires a status response
+            // return starter.CreateCheckStatusResponse(req, instanceId);
 
             // Ref: 
+            //  https://powerusers.microsoft.com/t5/Connecting-To-Data/Signalling-error-failure-condition-to-Power-Automate-from-Async/td-p/765893)
             //  https://docs.microsoft.com/en-us/azure/architecture/patterns/async-request-reply#asyncprocessingworkacceptor-function
             //  https://pacodelacruzag.wordpress.com/2018/07/10/async-http-apis-with-azure-durable-functions-2/
             //  https://kendaleiv.com/avoid-exposing-status-uri-from-durable-functions-extension-for-azure-functions-to-untrusted-parties-it-contains-a-secret-key/
-
             var checkStatusLocation = GetCheckStatusLocation(req, instanceId);
-            //string checkStatusLocacion = string.Format("{0}://{1}/api/ScrapeConnectorsStatus/{2}", req.Scheme, req.Host, instanceId); // To inform the client where to check the status
-            //string checkStatusLocacion = string.Format("{0}://{1}/api/ScrapeConnectorsStatus/{2}", req.Scheme, host, instanceId); // To inform the client where to check the status
-//            string message = $@"{{
-//  ""id"": ""{ instanceId }"",
-//  ""statusQueryGetUri"": ""{ checkStatusLocation }""
-//}}";
 
-            // Create an Http Response with Status Accepted (202) to let the client know that the request has been accepted but not yet processed. 
-            //ActionResult response = new AcceptedResult(checkStatusLocation, message); // The GET status location is returned as an http header
-
-            ActionResult response = new AcceptedResult(checkStatusLocation, new { 
+            ActionResult response = new AcceptedResult(checkStatusLocation, new
+            {
                 id = instanceId,
-                statusQueryGetUri = checkStatusLocation,
-            //    sendEventPostUri = checkStatusLocation + "AA",
-            //    terminatePostUri = checkStatusLocation + "BB",
-            //    purgeHistoryDeleteUri = checkStatusLocation + "CC",
-            }); // The GET status location is returned as an http header
+                statusQueryGetUri = checkStatusLocation,  // The GET status location is returned as an http header, this is just for info
+                sendEventPostUri = checkStatusLocation + "AA",
+                terminatePostUri = checkStatusLocation + "BB",
+                purgeHistoryDeleteUri = checkStatusLocation + "CC",
+            }); 
 
-            req.HttpContext.Response.Headers.Add("retry-after", "20"); // To inform the client how long to wait in seconds before checking the status
-            ////req.HttpContext.Response.Headers.Add("Content-Type", "application/json");
+            // To inform the client how long to wait in seconds before checking the status
+            req.HttpContext.Response.Headers.Add("retry-after", "20"); 
 
             return response;
         }
 
         private static string GetCheckStatusLocation(HttpRequest req, string instanceId)
         {
-            //var checkStatusLocation = string.Format("{0}://{1}/api/ScrapeConnectorsStatus/{2}", req.Scheme, req.Host, instanceId);
-            //var checkStatusLocation = string.Format("{0}://{1}/api/ScrapeConnectorsStatus/{2}", "https", host, instanceId);
-
-            var checkStatusLocation = string.Format("{0}://{1}/api/ScrapeConnectorsStatus/instance/{2}", req.Scheme, req.Host, instanceId);
-
-            //var checkStatusLocation = $"https://funcdeprecatedactionsblog.azurewebsites.net/api/ScrapeConnectorsStatus?instance={instanceId}";
-            return checkStatusLocation;
+            return string.Format("{0}://{1}/api/ScrapeConnectorsStatus/instance/{2}", req.Scheme, req.Host, instanceId);
         }
 
         /// <summary>
@@ -131,13 +117,14 @@ namespace DeprecatedActions.Durable
                     ActionResult response = new AcceptedResult(checkStatusLocation, new
                     {
                         id = instanceId,
-                        statusQueryGetUri = checkStatusLocation,
+                        statusQueryGetUri = checkStatusLocation,    // The GET status location is returned as an http header
                         sendEventPostUri = checkStatusLocation + "AA",
                         terminatePostUri = checkStatusLocation + "BB",
                         purgeHistoryDeleteUri = checkStatusLocation + "CC",
-                    }); // The GET status location is returned as an http header
+                    }); 
 
-                    req.HttpContext.Response.Headers.Add("retry-after", "20"); // To inform the client how long to wait before checking the status. 
+                    // To inform the client how long to wait before checking the status. 
+                    req.HttpContext.Response.Headers.Add("retry-after", "20"); 
                     return response;
                 }
                 else if (status.RuntimeStatus == OrchestrationRuntimeStatus.Completed)
@@ -148,6 +135,7 @@ namespace DeprecatedActions.Durable
                 {
                     return new BadRequestObjectResult(status.Output);
                 }
+                throw new Exception($"Unexpected RuntimeStatus: {status.RuntimeStatus}");
             }
 
             // If status is null, then instance has not been found. Create and return an Http Response with status NotFound (404). 
@@ -187,10 +175,6 @@ namespace DeprecatedActions.Durable
 
             // Put the results together
             var result = tasks.Select(t => t.Result);
-
-            // Add delay of 2 mins to aid debugging
-            //DateTime deadline = context.CurrentUtcDateTime.Add(TimeSpan.FromMinutes(1));
-            //await context.CreateTimer(deadline, CancellationToken.None);
 
             return result.OrderBy(r => r.UniqueName).ToList();
         }
