@@ -40,6 +40,7 @@ namespace DeprecatedActions.Durable
 
             log.LogInformation($"Started orchestration with ID = '{instanceId}'.");
 
+            // Return a custom '202 Accepted' response
             return BuildAcceptedResponse(req, instanceId);
         }
 
