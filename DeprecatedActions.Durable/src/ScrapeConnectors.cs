@@ -45,9 +45,10 @@ namespace DeprecatedActions.Durable
 
         private static IActionResult BuildAcceptedResponse(HttpRequest req, string instanceId)
         {
-            // To inform the client how long to wait in seconds before checking the status
+            // Inform the client how long to wait in seconds before checking the status
             req.HttpContext.Response.Headers.Add("retry-after", "20");
 
+            // Inform the client where to check again
             var location = string.Format("{0}://{1}/api/ScrapeConnectorsStatus/instance/{2}", req.Scheme, req.Host, instanceId);
             return new AcceptedResult(location, null);
         }
