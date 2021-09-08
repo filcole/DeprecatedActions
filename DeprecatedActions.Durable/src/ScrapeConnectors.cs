@@ -40,8 +40,47 @@ namespace DeprecatedActions.Durable
 
             log.LogInformation($"Started orchestration with ID = '{instanceId}'.");
 
-            // Return the 'standard' check status response, Accepted 202 status
-            return starter.CreateCheckStatusResponse(req, instanceId);
+            return BuildAcceptedResponse(req, instanceId);
+        }
+
+        private static IActionResult BuildAcceptedResponse(HttpRequest req, string instanceId)
+        {
+            // To inform the client how long to wait in seconds before checking the status
+            req.HttpContext.Response.Headers.Add("retry-after", "20");
+
+            var location = string.Format("{0}://{1}/api/ScrapeConnectorsStatus/instance/{2}", req.Scheme, req.Host, instanceId);
+            return new AcceptedResult(location, null);
+        }
+
+        /// Http Triggered Function which acts as a wrapper to get the status of a running Durable orchestration instance.
+        /// We're using Anonymous Authorisation Level for demonstration purposes. You should use a more secure approach. 
+        [FunctionName(nameof(ScrapeConnectorsStatus))]
+        public static async Task<IActionResult> ScrapeConnectorsStatus(
+            [HttpTrigger(AuthorizationLevel.Anonymous, methods: "get", Route = "ScrapeConnectorsStatus/instance/{instanceId}")] HttpRequest req,
+            [DurableClient] IDurableOrchestrationClient orchestrationClient,
+            string instanceId)
+        {
+            // Get the built-in status of the orchestration instance. This status is managed by the Durable Functions Extension. 
+            var status = await orchestrationClient.GetStatusAsync(instanceId);
+            if (status != null)
+            {
+                if (status.RuntimeStatus == OrchestrationRuntimeStatus.Running || status.RuntimeStatus == OrchestrationRuntimeStatus.Pending)
+                {
+                    return BuildAcceptedResponse(req, instanceId);
+                }
+                else if (status.RuntimeStatus == OrchestrationRuntimeStatus.Completed)
+                {
+                    return new OkObjectResult(status.Output);
+                }
+                else if (status.RuntimeStatus == OrchestrationRuntimeStatus.Failed)
+                {
+                    return new BadRequestObjectResult(status.Output);
+                }
+                throw new Exception($"Unexpected RuntimeStatus: {status.RuntimeStatus}");
+            }
+
+            // If status is null, then instance has not been found. Create and return an Http Response with status NotFound (404). 
+            return new NotFoundObjectResult($"InstanceId {instanceId} is not found.");
         }
 
         //
