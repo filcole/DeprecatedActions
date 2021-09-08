@@ -101,6 +101,12 @@ namespace DeprecatedActions.Durable
             {
                 // Filter connectors found to just the selectedConnectors required
                 connectors = connectors.Where(c => request.SelectedConnectors.Contains(c.UniqueName)).ToList();
+
+                // Throw an exception if not all connectors are found, we could be more helpful with the error message here!!
+                if (connectors.Count < request.SelectedConnectors.Count())
+                {
+                    throw new Exception("Not all connectors found");
+                }
             }
 
             // Create a task for each connector to get the actions from their own docs page
