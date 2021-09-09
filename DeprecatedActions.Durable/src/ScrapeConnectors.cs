@@ -3,9 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
-using System.Net.Http;
 using System.Text.RegularExpressions;
-using System.Threading;
 using System.Threading.Tasks;
 using DeprecatedActions.Models;
 using HtmlAgilityPack;
@@ -14,7 +12,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.DurableTask;
 using Microsoft.Azure.WebJobs.Extensions.Http;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
+using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Enums;
 using Microsoft.Extensions.Logging;
+using Microsoft.OpenApi.Models;
 using Newtonsoft.Json;
 
 namespace DeprecatedActions.Durable
@@ -23,9 +24,13 @@ namespace DeprecatedActions.Durable
     {
         private readonly static Regex sConnectorUniqueName = new Regex(@"^\.\.\/(.*)\/$");
 
+        [OpenApiOperation(operationId: nameof(ScrapeConnectors), tags: new[] { "default" }, Summary = "Get Actions", Description = "Gets the actions and their deprecation status for one or more custom connectors", Visibility = OpenApiVisibilityType.Important)]
+        [OpenApiSecurity("function_key", SecuritySchemeType.ApiKey, Name = "x-functions-key", In = OpenApiSecurityLocationType.Header)]
+        [OpenApiRequestBody(contentType: "application/json", typeof(ScrapeConnectorsRequest), Required = true)]
+        [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(List<ConnectorInfo>), Summary = "Connector information", Description = "The actions/operations within a connector and the status thereof")]
         [FunctionName(nameof(ScrapeConnectors))]
         public static async Task<IActionResult> ScrapeConnectors(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = null)] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] HttpRequest req,
             [DurableClient] IDurableOrchestrationClient starter,
             ILogger log)
         {
@@ -54,15 +59,18 @@ namespace DeprecatedActions.Durable
             return new AcceptedResult(location, null);
         }
 
-        /// Http Triggered Function which acts as a wrapper to get the status of a running Durable orchestration instance.
-        /// We're using Anonymous Authorisation Level for demonstration purposes. You should use a more secure approach. 
+        // Http Triggered Function which acts as a wrapper to get the status of a running Durable orchestration instance.
+        // We're using Anonymous Authorisation Level for demonstration purposes. You should use a more secure approach.
+        [OpenApiOperation(operationId: nameof(ScrapeConnectorsStatus), tags: new[] { "default" }, Summary = "Get Status of Durable Function", Description = "Gets the status of a durable function", Visibility = OpenApiVisibilityType.Internal)]
+        [OpenApiParameter(name: "instanceId", In = ParameterLocation.Path, Required = true, Type = typeof(string))]
+        [OpenApiResponseWithoutBody(statusCode: HttpStatusCode.OK, Description = "default")]
         [FunctionName(nameof(ScrapeConnectorsStatus))]
         public static async Task<IActionResult> ScrapeConnectorsStatus(
             [HttpTrigger(AuthorizationLevel.Anonymous, methods: "get", Route = "ScrapeConnectorsStatus/instance/{instanceId}")] HttpRequest req,
             [DurableClient] IDurableOrchestrationClient orchestrationClient,
             string instanceId)
         {
-            // Get the built-in status of the orchestration instance. This status is managed by the Durable Functions Extension. 
+            // Get the built-in status of the orchestration instance. This status is managed by the Durable Functions Extension.
             var status = await orchestrationClient.GetStatusAsync(instanceId);
             if (status != null)
             {
@@ -81,12 +89,12 @@ namespace DeprecatedActions.Durable
                 throw new Exception($"Unexpected RuntimeStatus: {status.RuntimeStatus}");
             }
 
-            // If status is null, then instance has not been found. Create and return an Http Response with status NotFound (404). 
+            // If status is null, then instance has not been found. Create and return an Http Response with status NotFound (404).
             return new NotFoundObjectResult($"InstanceId {instanceId} is not found.");
         }
 
         //
-        // Durable Function Orchestrator and Actions 
+        // Durable Function Orchestrator and Actions
         //
 
         [FunctionName("ScrapeConnectorsOrchestration")]
